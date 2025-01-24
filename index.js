@@ -31,11 +31,26 @@ async function run() {
     );
 
     const userCollection = client.db("medicalCampDB").collection("users");
+    const campCollection = client.db("medicalCampDB").collection("camps");
 
     // user related api
     app.post("/users", async (req, res) => {
       const user = req.body;
       const result = await userCollection.insertOne(user);
+      res.send(result);
+    });
+
+    // camps related api
+    app.get("/camps", async (req, res) => {
+      const limit = parseInt(req.query.limit) || 0;
+
+      let query = campCollection.find();
+
+      if (limit > 0) {
+        query = query.sort({ participantCount: -1 }).limit(limit);
+      }
+
+      const result = await query.toArray();
       res.send(result);
     });
   } finally {
