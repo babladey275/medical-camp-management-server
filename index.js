@@ -43,8 +43,21 @@ async function run() {
     // camps related api
     app.get("/camps", async (req, res) => {
       const limit = parseInt(req.query.limit) || 0;
+      const sortBy = req.query.sortBy || "participantCount";
 
       let query = campCollection.find();
+
+      // sort
+      const sort = {};
+      if (sortBy === "participantCount") {
+        sort.participantCount = -1;
+      } else if (sortBy === "fees") {
+        sort.fees = -1;
+      } else if (sortBy === "name") {
+        sort.name = 1;
+      }
+
+      query = query.sort(sort);
 
       if (limit > 0) {
         query = query.sort({ participantCount: -1 }).limit(limit);
