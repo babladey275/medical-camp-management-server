@@ -43,9 +43,20 @@ async function run() {
     // camps related api
     app.get("/camps", async (req, res) => {
       const limit = parseInt(req.query.limit) || 0;
-      const sortBy = req.query.sortBy || "participantCount";
+      const sortBy = req.query?.sortBy;
+      const search = req.query?.search;
 
-      let query = campCollection.find();
+      let query = {};
+
+      // search by name, location
+      if (search) {
+        query = {
+          $or: [
+            { name: { $regex: search, $options: "i" } },
+            { location: { $regex: search, $options: "i" } },
+          ],
+        };
+      }
 
       // sort
       const sort = {};
@@ -57,14 +68,19 @@ async function run() {
         sort.name = 1;
       }
 
-      query = query.sort(sort);
+      let result;
 
       if (limit > 0) {
-        query = query.sort({ participantCount: -1 }).limit(limit);
+        result = campCollection
+          .find(query)
+          .sort({ participantCount: -1 })
+          .limit(limit);
+      } else {
+        result = campCollection.find(query).sort(sort);
       }
 
-      const result = await query.toArray();
-      res.send(result);
+      const campsResult = await result.toArray();
+      res.send(campsResult);
     });
   } finally {
     // Ensures that the client will close when you finish/error
