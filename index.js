@@ -35,6 +35,7 @@ async function run() {
     const pastCampCollection = client
       .db("medicalCampDB")
       .collection("pastCamps");
+    const reviewCollection = client.db("medicalCampDB").collection("reviews");
 
     // user related api
     app.post("/users", async (req, res) => {
@@ -93,8 +94,15 @@ async function run() {
       res.send(result);
     });
 
+    // past camps
     app.get("/past-camps", async (req, res) => {
       const result = await pastCampCollection.find().toArray();
+      res.send(result);
+    });
+
+    // reviews api
+    app.get("/reviews", async (req, res) => {
+      const result = await reviewCollection.find().toArray();
       res.send(result);
     });
   } finally {
