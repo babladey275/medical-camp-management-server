@@ -32,6 +32,9 @@ async function run() {
 
     const userCollection = client.db("medicalCampDB").collection("users");
     const campCollection = client.db("medicalCampDB").collection("camps");
+    const pastCampCollection = client
+      .db("medicalCampDB")
+      .collection("pastCamps");
 
     // user related api
     app.post("/users", async (req, res) => {
@@ -87,6 +90,11 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await campCollection.findOne(query);
+      res.send(result);
+    });
+
+    app.get("/past-camps", async (req, res) => {
+      const result = await pastCampCollection.find().toArray();
       res.send(result);
     });
   } finally {
