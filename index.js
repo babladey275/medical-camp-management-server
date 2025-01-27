@@ -93,6 +93,32 @@ async function run() {
     });
 
     // user related api
+    app.get("/users/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+      const query = { email: email };
+      const result = await userCollection.findOne(query);
+      res.send(result);
+    });
+
+    app.patch("/users/:id", verifyToken, async (req, res) => {
+      const user = req.body;
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          name: user.name,
+          email: user.email,
+          image: user.image,
+          phone: user.phone,
+        },
+      };
+      const result = await userCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+
     app.post("/users", async (req, res) => {
       const user = req.body;
 
