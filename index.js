@@ -38,6 +38,31 @@ async function run() {
       .collection("pastCamps");
     const reviewCollection = client.db("medicalCampDB").collection("reviews");
 
+    // jwt related api
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "6h",
+      });
+      res.send({ token });
+    });
+
+    // middleWare
+    const verifyToken = (req, res, next) => {
+      console.log(req.headers.authorization);
+      if (!req.headers.authorization) {
+        return res.status(401).send({ message: "Unauthorized access" });
+      }
+      const token = req.headers.authorization.split(" ")[1];
+      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+          return res.status(401).send({ message: "Unauthorize message" });
+        }
+        req.decoded = decoded;
+        next();
+      });
+    };
+
     // user related api
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -95,7 +120,7 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/camps", async (req, res) => {
+    app.post("/camps", verifyToken, async (req, res) => {
       const camp = req.body;
       const result = await campCollection.insertOne(camp);
       res.send(result);
