@@ -32,6 +32,9 @@ async function run() {
     );
 
     const userCollection = client.db("medicalCampDB").collection("users");
+    const organizerCollection = client
+      .db("medicalCampDB")
+      .collection("organizers");
     const campCollection = client.db("medicalCampDB").collection("camps");
     const pastCampCollection = client
       .db("medicalCampDB")
@@ -62,6 +65,33 @@ async function run() {
         next();
       });
     };
+
+    // verify admin
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await organizerCollection.findOne(query);
+      const isAdmin = user?.role === "admin";
+      if (!isAdmin) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+      next();
+    };
+
+    // organizer related api
+    app.get("/organizers/admin/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+      const query = { email: email };
+      const user = await organizerCollection.findOne(query);
+      let admin = false;
+      if (user) {
+        admin = user?.role === "admin";
+      }
+      res.send({ admin });
+    });
 
     // user related api
     app.post("/users", async (req, res) => {
