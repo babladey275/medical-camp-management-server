@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const jwt = require("jsonwebtoken");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 const port = process.env.PORT || 5000;
@@ -91,6 +92,12 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await campCollection.findOne(query);
+      res.send(result);
+    });
+
+    app.post("/camps", async (req, res) => {
+      const camp = req.body;
+      const result = await campCollection.insertOne(camp);
       res.send(result);
     });
 
