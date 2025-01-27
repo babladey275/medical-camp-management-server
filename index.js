@@ -52,7 +52,6 @@ async function run() {
 
     // middleWare
     const verifyToken = (req, res, next) => {
-      console.log(req.headers.authorization);
       if (!req.headers.authorization) {
         return res.status(401).send({ message: "Unauthorized access" });
       }
@@ -157,11 +156,23 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/camps", verifyToken, async (req, res) => {
+    app.post("/camps", verifyToken, verifyAdmin, async (req, res) => {
       const camp = req.body;
       const result = await campCollection.insertOne(camp);
       res.send(result);
     });
+
+    app.delete(
+      "/delete-camp/:campId",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.campId;
+        const query = { _id: new ObjectId(id) };
+        const result = await campCollection.deleteOne(query);
+        res.send(result);
+      }
+    );
 
     // past camps
     app.get("/past-camps", async (req, res) => {
