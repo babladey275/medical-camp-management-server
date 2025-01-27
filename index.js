@@ -162,17 +162,32 @@ async function run() {
       res.send(result);
     });
 
-    app.delete(
-      "/delete-camp/:campId",
-      verifyToken,
-      verifyAdmin,
-      async (req, res) => {
-        const id = req.params.campId;
-        const query = { _id: new ObjectId(id) };
-        const result = await campCollection.deleteOne(query);
-        res.send(result);
-      }
-    );
+    app.patch("/camps/:campId", async (req, res) => {
+      const camp = req.body;
+      const id = req.params.campId;
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          name: camp.name,
+          image: camp.image,
+          fees: camp.fees,
+          dateTime: camp.dateTime,
+          location: camp.location,
+          healthCareProfessional: camp.healthCareProfessional,
+          participantCount: camp.participantCount,
+          description: camp.description,
+        },
+      };
+      const result = await campCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+
+    app.delete("/camps/:campId", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.campId;
+      const query = { _id: new ObjectId(id) };
+      const result = await campCollection.deleteOne(query);
+      res.send(result);
+    });
 
     // past camps
     app.get("/past-camps", async (req, res) => {
