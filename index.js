@@ -36,6 +36,9 @@ async function run() {
       .db("medicalCampDB")
       .collection("organizers");
     const campCollection = client.db("medicalCampDB").collection("camps");
+    const registerCampCollection = client
+      .db("medicalCampDB")
+      .collection("registerCamps");
     const pastCampCollection = client
       .db("medicalCampDB")
       .collection("pastCamps");
@@ -188,7 +191,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/camps/:campId", async (req, res) => {
+    app.patch("/camps/:campId", verifyToken, verifyAdmin, async (req, res) => {
       const camp = req.body;
       const id = req.params.campId;
       const filter = { _id: new ObjectId(id) };
@@ -218,6 +221,19 @@ async function run() {
     // past camps
     app.get("/past-camps", async (req, res) => {
       const result = await pastCampCollection.find().toArray();
+      res.send(result);
+    });
+
+    //register camps
+    app.post("/register-camps", verifyToken, async (req, res) => {
+      const register = req.body;
+      const result = await registerCampCollection.insertOne(register);
+
+      const updatedCamp = await campCollection.findOneAndUpdate(
+        { _id: new ObjectId(register.campId) },
+        { $inc: { participantCount: 1 } }
+      );
+
       res.send(result);
     });
 
