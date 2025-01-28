@@ -225,7 +225,17 @@ async function run() {
     });
 
     //register camps
-    app.post("/register-camps", verifyToken, async (req, res) => {
+    app.get("/registered-camps/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+      const query = { participantEmail: email };
+      const result = await registerCampCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.post("/registered-camps", verifyToken, async (req, res) => {
       const register = req.body;
       const result = await registerCampCollection.insertOne(register);
 
