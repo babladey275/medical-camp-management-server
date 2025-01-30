@@ -271,6 +271,12 @@ async function run() {
       res.send(result);
     });
 
+    app.post("/reviews", async (req, res) => {
+      const reviews = req.body;
+      const result = await reviewCollection.insertOne(reviews);
+      res.send(result);
+    });
+
     // payment intent
     app.post("/create-payment-intent", async (req, res) => {
       const { fees } = req.body;
