@@ -236,6 +236,11 @@ async function run() {
     });
 
     //register camps
+    app.get("/registered-camps", async (req, res) => {
+      const result = await registerCampCollection.find().toArray();
+      res.send(result);
+    });
+
     app.get("/registered-camps/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
       if (email !== req.decoded.email) {
@@ -256,6 +261,22 @@ async function run() {
       );
 
       res.send(result);
+    });
+
+    app.patch("/registered-camps/:id", async (req, res) => {
+      const id = req.params.id;
+      const confirmStatus = req.body.confirmStatus;
+
+      const filter = { _id: new ObjectId(id) };
+      const updateCamp = {
+        $set: { confirmStatus },
+      };
+      const result = await registerCampCollection.updateOne(filter, updateCamp);
+      const paymentResult = await paymentCollection.updateOne(
+        { registerId: new ObjectId(id) },
+        updateCamp
+      );
+      res.send({ result, paymentResult });
     });
 
     app.delete("/registered-camps/:id", verifyToken, async (req, res) => {
@@ -291,6 +312,15 @@ async function run() {
       res.send({
         clientSecret: paymentIntent.client_secret,
       });
+    });
+
+    app.get("/payments/:email", verifyToken, async (req, res) => {
+      const query = { email: req.params.email };
+      if (req.params.email !== req.decoded.email) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+      const result = await paymentCollection.find(query).toArray();
+      res.send(result);
     });
 
     app.post("/payments", async (req, res) => {
