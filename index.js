@@ -273,7 +273,7 @@ async function run() {
       };
       const result = await registerCampCollection.updateOne(filter, updateCamp);
       const paymentResult = await paymentCollection.updateOne(
-        { registerId: new ObjectId(id) },
+        { registerId: id },
         updateCamp
       );
       res.send({ result, paymentResult });
@@ -337,6 +337,97 @@ async function run() {
       );
 
       res.send({ paymentResult, updateResult });
+    });
+
+    // participant stat
+    app.get("/participant-stat/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+
+      // Get total registered camps count for the participant
+      const totalRegisteredCamps = await registerCampCollection.countDocuments({
+        participantEmail: email,
+      });
+
+      // Get the total number of payments for the participant
+      const totalPaymentNum = await paymentCollection.countDocuments({
+        email: email,
+      });
+
+      const totalFees = await paymentCollection
+        .aggregate([
+          { $match: { email: email } },
+          { $group: { _id: null, total: { $sum: "$fees" } } },
+        ])
+        .next();
+
+      const totalFeesAmount = totalFees ? totalFees.total : 0;
+
+      // Aggregate the total fees by month, year, and day from payments using _id timestamp
+      const paymentData = await paymentCollection
+        .aggregate([
+          { $match: { email: email } },
+          {
+            $project: {
+              day: { $dayOfMonth: { $toDate: "$_id" } }, // Extract day from ObjectId's timestamp
+              month: { $month: { $toDate: "$_id" } },
+              year: { $year: { $toDate: "$_id" } },
+              fees: 1,
+            },
+          },
+          {
+            $group: {
+              _id: { day: "$day", month: "$month", year: "$year" },
+              totalFees: { $sum: "$fees" },
+              numberOfPayments: { $sum: 1 },
+            },
+          },
+          {
+            $sort: { "_id.year": 1, "_id.month": 1, "_id.day": 1 },
+          },
+        ])
+        .toArray();
+
+      // Aggregate the registered camps by month, year, and day from _id timestamp
+      const campData = await registerCampCollection
+        .aggregate([
+          { $match: { participantEmail: email } },
+          {
+            $project: {
+              day: { $dayOfMonth: { $toDate: "$_id" } }, // Extract day from ObjectId's timestamp
+              month: { $month: { $toDate: "$_id" } },
+              year: { $year: { $toDate: "$_id" } },
+            },
+          },
+          {
+            $group: {
+              _id: { day: "$day", month: "$month", year: "$year" },
+              totalCamps: { $sum: 1 },
+            },
+          },
+          {
+            $sort: { "_id.year": 1, "_id.month": 1, "_id.day": 1 },
+          },
+        ])
+        .toArray();
+
+      // Prepare the final chart data by combining payment, camp, and number of payments
+      const chartData = paymentData.map((paymentItem, index) => {
+        const campItem = campData[index] || { totalCamps: 0 };
+
+        return {
+          date: `${paymentItem._id.day}/${paymentItem._id.month}/${paymentItem._id.year}`,
+          totalFees: paymentItem.totalFees,
+          totalCamps: campItem.totalCamps,
+          numberOfPayments: paymentItem.numberOfPayments,
+        };
+      });
+
+      res.send({
+        totalPayment: totalFeesAmount,
+        totalRegisteredCamps,
+        totalPaymentNum,
+        chartData,
+      });
     });
   } finally {
     // Ensures that the client will close when you finish/error
