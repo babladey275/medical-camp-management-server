@@ -1,10 +1,11 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
 const jwt = require("jsonwebtoken");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-const app = express();
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const app = express();
 const port = process.env.PORT || 5000;
 
 //middleware
@@ -16,9 +17,11 @@ app.use(
       "https://medical-camp-bb0ac.firebaseapp.com",
     ],
     credentials: true,
+    optionSuccessStatus: 200,
   })
 );
 app.use(express.json());
+app.use(cookieParser());
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.wf6wg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
@@ -55,21 +58,42 @@ async function run() {
     const reviewCollection = client.db("medicalCampDB").collection("reviews");
     const paymentCollection = client.db("medicalCampDB").collection("payments");
 
-    // jwt related api
+    // Generate jwt token
     app.post("/jwt", async (req, res) => {
-      const user = req.body;
-      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
-        expiresIn: "6h",
+      const email = req.body;
+      const token = jwt.sign(email, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "7d",
       });
-      res.send({ token });
+      res
+        .cookie("token", token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        })
+        .send({ success: true });
+    });
+    // Logout
+    app.get("/logout", async (req, res) => {
+      try {
+        res
+          .clearCookie("token", {
+            maxAge: 0,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+          })
+          .send({ success: true });
+      } catch (err) {
+        res.status(500).send(err);
+      }
     });
 
     // middleWare
     const verifyToken = (req, res, next) => {
-      if (!req.headers.authorization) {
+      const token = req.cookies?.token;
+      console.log(token);
+      if (!token) {
         return res.status(401).send({ message: "Unauthorized access" });
       }
-      const token = req.headers.authorization.split(" ")[1];
       jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
         if (err) {
           return res.status(401).send({ message: "Unauthorize message" });
@@ -343,91 +367,125 @@ async function run() {
     app.get("/participant-stat/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
 
-      // Get total registered camps count for the participant
-      const totalRegisteredCamps = await registerCampCollection.countDocuments({
-        participantEmail: email,
-      });
+      try {
+        const totalRegisteredCamps =
+          await registerCampCollection.countDocuments({
+            participantEmail: email,
+          });
 
-      // Get the total number of payments for the participant
-      const totalPaymentNum = await paymentCollection.countDocuments({
-        email: email,
-      });
+        const totalPaymentNum = await paymentCollection.countDocuments({
+          email: email,
+        });
 
-      const totalFees = await paymentCollection
-        .aggregate([
-          { $match: { email: email } },
-          { $group: { _id: null, total: { $sum: "$fees" } } },
-        ])
-        .next();
+        const totalFees = await paymentCollection
+          .aggregate([
+            { $match: { email: email } },
+            { $group: { _id: null, total: { $sum: "$fees" } } },
+          ])
+          .next();
 
-      const totalFeesAmount = totalFees ? totalFees.total : 0;
+        const totalFeesAmount = totalFees ? totalFees.total : 0;
 
-      // Aggregate the total fees by month, year, and day from payments using _id timestamp
-      const paymentData = await paymentCollection
-        .aggregate([
-          { $match: { email: email } },
-          {
-            $project: {
-              day: { $dayOfMonth: { $toDate: "$_id" } }, // Extract day from ObjectId's timestamp
-              month: { $month: { $toDate: "$_id" } },
-              year: { $year: { $toDate: "$_id" } },
-              fees: 1,
+        // Aggregate payment data and lookup matching camp data by day, month, and year
+        const chartData = await paymentCollection
+          .aggregate([
+            { $match: { email: email } },
+            {
+              $project: {
+                day: { $dayOfMonth: { $toDate: "$_id" } },
+                month: { $month: { $toDate: "$_id" } },
+                year: { $year: { $toDate: "$_id" } },
+                fees: 1,
+              },
             },
-          },
-          {
-            $group: {
-              _id: { day: "$day", month: "$month", year: "$year" },
-              totalFees: { $sum: "$fees" },
-              numberOfPayments: { $sum: 1 },
+            {
+              $group: {
+                _id: { day: "$day", month: "$month", year: "$year" },
+                totalFees: { $sum: "$fees" },
+                numberOfPayments: { $sum: 1 },
+              },
             },
-          },
-          {
-            $sort: { "_id.year": 1, "_id.month": 1, "_id.day": 1 },
-          },
-        ])
-        .toArray();
-
-      // Aggregate the registered camps by month, year, and day from _id timestamp
-      const campData = await registerCampCollection
-        .aggregate([
-          { $match: { participantEmail: email } },
-          {
-            $project: {
-              day: { $dayOfMonth: { $toDate: "$_id" } }, // Extract day from ObjectId's timestamp
-              month: { $month: { $toDate: "$_id" } },
-              year: { $year: { $toDate: "$_id" } },
+            {
+              $lookup: {
+                from: "registerCampCollection",
+                let: {
+                  day: "$_id.day",
+                  month: "$_id.month",
+                  year: "$_id.year",
+                },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $and: [
+                          {
+                            $eq: [
+                              { $dayOfMonth: { $toDate: "$_id" } },
+                              "$$day",
+                            ],
+                          },
+                          { $eq: [{ $month: { $toDate: "$_id" } }, "$$month"] },
+                          { $eq: [{ $year: { $toDate: "$_id" } }, "$$year"] },
+                        ],
+                      },
+                    },
+                  },
+                  {
+                    $group: {
+                      _id: null,
+                      totalCamps: { $sum: 1 },
+                    },
+                  },
+                ],
+                as: "campData",
+              },
             },
-          },
-          {
-            $group: {
-              _id: { day: "$day", month: "$month", year: "$year" },
-              totalCamps: { $sum: 1 },
+            {
+              $unwind: {
+                path: "$campData",
+                preserveNullAndEmptyArrays: true,
+              },
             },
-          },
-          {
-            $sort: { "_id.year": 1, "_id.month": 1, "_id.day": 1 },
-          },
-        ])
-        .toArray();
+            {
+              $addFields: {
+                totalCamps: { $ifNull: ["$campData.totalCamps", 0] },
+              },
+            },
+            {
+              $sort: { "_id.year": 1, "_id.month": 1, "_id.day": 1 },
+            },
+            {
+              $project: {
+                date: {
+                  $concat: [
+                    { $toString: "$_id.day" },
+                    "/",
+                    { $toString: "$_id.month" },
+                    "/",
+                    { $toString: "$_id.year" },
+                  ],
+                },
+                totalFees: 1,
+                totalCamps: 1,
+                numberOfPayments: 1,
+              },
+            },
+          ])
+          .toArray();
 
-      // Prepare the final chart data by combining payment, camp, and number of payments
-      const chartData = paymentData.map((paymentItem, index) => {
-        const campItem = campData[index] || { totalCamps: 0 };
-
-        return {
-          date: `${paymentItem._id.day}/${paymentItem._id.month}/${paymentItem._id.year}`,
-          totalFees: paymentItem.totalFees,
-          totalCamps: campItem.totalCamps,
-          numberOfPayments: paymentItem.numberOfPayments,
-        };
-      });
-
-      res.send({
-        totalPayment: totalFeesAmount,
-        totalRegisteredCamps,
-        totalPaymentNum,
-        chartData,
-      });
+        res.send({
+          totalPayment: totalFeesAmount,
+          totalRegisteredCamps,
+          totalPaymentNum,
+          chartData,
+        });
+      } catch (error) {
+        console.error("Error fetching participant stats:", error.message);
+        res.status(500).send({
+          error: "Internal Server Error",
+          message: error.message || "An unexpected error occurred.",
+        });
+      }
     });
   } finally {
     // Ensures that the client will close when you finish/error
